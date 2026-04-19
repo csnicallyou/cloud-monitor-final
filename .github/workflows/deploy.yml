@@ -7,34 +7,16 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Install SSH key
-      uses: webfactory/ssh-agent@v0.9.0
-      with:
-        ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
-    
-    - name: Add server to known_hosts
+    - name: Deploy application
       run: |
-        ssh-keyscan -H 192.168.1.102 >> ~/.ssh/known_hosts
-    
-    - name: Deploy to server
-      run: |
-        ssh csn@192.168.1.102 'bash -s' << 'EOF'
-          set -e
-          cd /home/csn
-          
-          # Pull latest changes
-          git pull origin main
-          
-          # Restart Flask app
-          pkill -f "python cloud.py" || true
-          source /home/csn/cloud_lab_env/bin/activate
-          nohup python cloud.py > /home/csn/flask.log 2>&1 &
-          
-          echo "✅ Deployment finished at $(date)"
-        EOF
+        cd /home/csn
+        pkill -f "python cloud.py" || true
+        source /home/csn/cloud_lab_env/bin/activate
+        nohup python cloud.py > /home/csn/flask.log 2>&1 &
+        echo "✅ Deployment finished at $(date)"
