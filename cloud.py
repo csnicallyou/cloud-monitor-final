@@ -43,15 +43,49 @@ NAV_BAR = '''
 
 @app.route('/')
 def index():
+    page = request.args.get('page', 1, type=int)
+    per_page = 5  # файлов на страницу
+    offset = (page - 1) * per_page
+    
     cur = conn.cursor()
-    cur.execute("SELECT id, name, size_bytes, uploaded_at FROM files ORDER BY id DESC")
+    # Получаем общее количество файлов
+    cur.execute("SELECT COUNT(*) FROM files")
+    total = cur.fetchone()[0]
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+    
+    # Получаем файлы для текущей страницы
+    cur.execute("""
+        SELECT id, name, size_bytes, uploaded_at 
+        FROM files 
+        ORDER BY id DESC 
+        LIMIT %s OFFSET %s
+    """, (per_page, offset))
     rows = cur.fetchall()
     cur.close()
 
     file_list = ''
     for row in rows:
-          file_list += f'<li>{row[1]} ({human_readable_size(row[2])}) - uploaded at {row[3]} - <a href="/download/{row[0]}">📥 Скачать</a></li>'
-    return NAV_BAR + f'''
+        file_list += f'<li>{row[1]} ({human_readable_size(row[2])}) - uploaded at {row[3]} - <a href="/download/{row[0]}">📥 Скачать</a> - <a href="#" onclick="confirmDelete({row[0]})">🗑️ Удалить</a></li>'
+
+    # Пагинация
+    pagination = ''
+    if page > 1:
+        pagination += f'<a href="?page={page-1}">◀ Предыдущая</a> '
+    pagination += f'Страница {page} из {total_pages} '
+    if page < total_pages:
+        pagination += f'<a href="?page={page+1}">Следующая ▶</a>'
+
+    js_script = '''
+    <script>
+    function confirmDelete(file_id) {
+        if (confirm('Вы уверены, что хотите удалить этот файл?')) {
+            window.location.href = '/delete/' + file_id;
+        }
+    }
+    </script>
+    '''
+
+    return NAV_BAR + js_script + f'''
     <h1>Cloud Lab</h1>
     <form action="/upload" method="post" enctype="multipart/form-data">
         <input type="file" name="file">
@@ -61,7 +95,11 @@ def index():
     <ul>
         {file_list}
     </ul>
+    <div style="margin-top: 15px;">
+        {pagination}
+    </div>
     '''
+
 
 @app.route('/upload', methods=['POST'])
 def upload():
@@ -126,7 +164,7 @@ def monitor():
     if page < total_pages:
         pagination += f'<a href="?page={page+1}">Следующая ▶</a>'
 
-    return NAV_BAR + f'''
+    return NAV_BAR + js_script + f'''
     <h1>Мониторинг сервера</h1>
 
     <table border="1" cellpadding="5" style="width:100%; border-collapse: collapse;">
@@ -571,6 +609,30 @@ def download(file_id):
     
     return "File not found", 404
 
+
+@app.route('/delete/<int:file_id>')
+def delete_file(file_id):
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM files WHERE id = %s", (file_id,))
+    row = cur.fetchone()
+    
+    if not row:
+        cur.close()
+        return "File not found", 404
+    
+    filename = row[0]
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    # Удаляем файл из файловой системы
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    
+    # Удаляем запись из БД
+    cur.execute("DELETE FROM files WHERE id = %s", (file_id,))
+    conn.commit()
+    cur.close()
+    
+    return redirect(url_for('index'))
 
 
 if __name__ == '__main__':
