@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Cloud Lab - Мониторинг{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stat-card h3 {
+        font-size: 14px;
+        opacity: 0.9;
+        margin-bottom: 10px;
+    }
+    .stat-card .value {
+        font-size: 28px;
+        font-weight: bold;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    th, td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+    }
+    th {
+        background: #2c3e50;
+        color: white;
+        font-weight: 600;
+    }
+    tr:hover {
+        background: #f8f9fa;
+    }
+    .status-ok {
+        color: #27ae60;
+        font-weight: bold;
+    }
+    .status-bad {
+        color: #e74c3c;
+        font-weight: bold;
+    }
+    .pagination {
+        text-align: center;
+        margin-top: 25px;
+    }
+    .pagination a {
+        margin: 0 5px;
+        padding: 8px 12px;
+        background: #3498db;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+    }
+    .pagination a:hover {
+        background: #2980b9;
+    }
+    .pagination span {
+        margin: 0 10px;
+        color: #666;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}📊 Системный мониторинг{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>📈 Всего записей</h3>
+        <div class="value">{{ total_pages * 10 if total_pages > 1 else metrics|length }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>📅 Последнее обновление</h3>
+        <div class="value">{% if metrics %}{{ metrics[0][0].strftime('%H:%M:%S') }}{% else %}—{% endif %}</div>
+    </div>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>⏰ Время</th>
+            <th>💻 CPU Load</th>
+            <th>💾 RAM Free</th>
+            <th>💿 Disk Free</th>
+            <th>🌐 nginx</th>
+            <th>🐘 PostgreSQL</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for metric in metrics %}
+        <tr>
+            <td>{{ metric[0].strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>
+                <span class="{% if metric[1] > 80 %}status-bad{% elif metric[1] > 50 %}status-warning{% else %}status-ok{% endif %}">
+                    {{ metric[1] }}%
+                </span>
+            </td>
+            <td>{{ metric[2] }} MB</td>
+            <td>{{ metric[3] }} GB</td>
+            <td class="{% if 'active' in metric[4] %}status-ok{% else %}status-bad{% endif %}">
+                {{ metric[4] }}
+            </td>
+            <td class="{% if 'active' in metric[5] %}status-ok{% else %}status-bad{% endif %}">
+                {{ metric[5] }}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" style="text-align: center;">📭 Нет данных мониторинга</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="pagination">
+    {% if page > 1 %}
+        <a href="?page={{ page-1 }}">◀ Предыдущая</a>
+    {% endif %}
+    <span>Страница {{ page }} из {{ total_pages }}</span>
+    {% if page < total_pages %}
+        <a href="?page={{ page+1 }}">Следующая ▶</a>
+    {% endif %}
+</div>
+{% endblock %}

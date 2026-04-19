@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Cloud Lab - Диагностика{% endblock %}
+
+{% block extra_css %}
+<style>
+    .diagnose-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    .card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+    }
+    .card h3 {
+        margin-bottom: 15px;
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .metric {
+        margin: 10px 0;
+        padding: 8px;
+        background: #f8f9fa;
+        border-radius: 5px;
+    }
+    .status-ok {
+        color: #27ae60;
+        font-weight: bold;
+    }
+    .status-warning {
+        color: #f39c12;
+        font-weight: bold;
+    }
+    .status-critical {
+        color: #e74c3c;
+        font-weight: bold;
+    }
+    .btn {
+        display: inline-block;
+        margin-top: 15px;
+        padding: 8px 15px;
+        background: #3498db;
+        color: white;
+        text-decoration: none;
+        border-radius: 5px;
+        transition: background 0.3s;
+    }
+    .btn:hover {
+        background: #2980b9;
+    }
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 8px 0;
+    }
+    .label {
+        font-weight: bold;
+        color: #555;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}🔍 Системная диагностика{% endblock %}
+
+{% block content %}
+<div class="diagnose-grid">
+    <!-- CPU Card -->
+    <div class="card">
+        <h3>💻 CPU</h3>
+        <div class="metric">
+            <div class="info-row">
+                <span class="label">Нагрузка (1 мин):</span>
+                <span class="{% if cpu_info.load > cpu_info.cores %}status-critical{% elif cpu_info.load > cpu_info.cores * 0.7 %}status-warning{% else %}status-ok{% endif %}">
+                    {{ cpu_info.load|default('—') }}
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="label">Ядер:</span>
+                <span>{{ cpu_info.cores|default('—') }}</span>
+            </div>
+        </div>
+        <a href="/diagnose/full/cpu" class="btn">🔍 Полная диагностика CPU</a>
+    </div>
+
+    <!-- RAM Card -->
+    <div class="card">
+        <h3>💾 RAM</h3>
+        <div class="metric">
+            <div class="info-row">
+                <span class="label">Всего:</span>
+                <span>{{ ram_info.total|default('—') }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Доступно:</span>
+                <span>{{ ram_info.available|default('—') }}</span>
+            </div>
+        </div>
+        <a href="/diagnose/full/ram" class="btn">🔍 Полная диагностика RAM</a>
+    </div>
+
+    <!-- DISK Card -->
+    <div class="card">
+        <h3>💿 DISK</h3>
+        <div class="metric">
+            <div class="info-row">
+                <span class="label">Использовано:</span>
+                <span class="{% if disk_info.use and disk_info.use|replace('%','')|int > 85 %}status-critical{% elif disk_info.use and disk_info.use|replace('%','')|int > 70 %}status-warning{% endif %}">
+                    {{ disk_info.use|default('—') }}
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="label">Раздел:</span>
+                <span>{{ disk_info.mount|default('—') }}</span>
+            </div>
+        </div>
+        <a href="/diagnose/full/disk" class="btn">🔍 Полная диагностика DISK</a>
+    </div>
+
+    <!-- NGINX Card -->
+    <div class="card">
+        <h3>🌐 NGINX</h3>
+        <div class="metric">
+            <div class="info-row">
+                <span class="label">Статус:</span>
+                <span class="{% if 'active' in nginx_status %}status-ok{% else %}status-critical{% endif %}">
+                    {{ nginx_status|default('—') }}
+                </span>
+            </div>
+        </div>
+        <a href="/diagnose/full/nginx" class="btn">🔍 Полная диагностика NGINX</a>
+    </div>
+
+    <!-- PostgreSQL Card -->
+    <div class="card">
+        <h3>🐘 PostgreSQL</h3>
+        <div class="metric">
+            <div class="info-row">
+                <span class="label">Статус:</span>
+                <span class="{% if 'active' in postgres_status %}status-ok{% else %}status-critical{% endif %}">
+                    {{ postgres_status|default('—') }}
+                </span>
+            </div>
+        </div>
+        <a href="/diagnose/full/postgres" class="btn">🔍 Полная диагностика PostgreSQL</a>
+    </div>
+</div>
+
+<div style="margin-top: 20px; text-align: center; color: #666; font-size: 12px;">
+    Последняя проверка: {{ now.strftime('%Y-%m-%d %H:%M:%S') }}
+</div>
+{% endblock %}

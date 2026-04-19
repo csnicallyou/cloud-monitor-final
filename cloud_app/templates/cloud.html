@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Cloud Lab - Облако{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Drag & Drop зона */
+    .drop-zone {
+        border: 3px dashed #ccc;
+        border-radius: 10px;
+        padding: 40px;
+        text-align: center;
+        background: #fafafa;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin-bottom: 20px;
+    }
+    .drop-zone.drag-over {
+        border-color: #4CAF50;
+        background: #e8f5e9;
+    }
+    .drop-zone input { display: none; }
+    
+    /* Кнопки */
+    .buttons {
+        margin: 20px 0;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .buttons button {
+        padding: 8px 15px;
+        cursor: pointer;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        transition: background 0.3s;
+    }
+    .buttons button:hover { background: #0056b3; }
+    
+    /* Сортировка */
+    .sort-bar {
+        background: white;
+        padding: 12px;
+        margin: 15px 0;
+        border-radius: 5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .sort-bar a {
+        margin-right: 15px;
+        text-decoration: none;
+        color: #007bff;
+    }
+    .sort-bar a:hover { text-decoration: underline; }
+    
+    /* Список файлов */
+    .file-list {
+        list-style: none;
+        margin-top: 15px;
+    }
+    .file-item {
+        background: white;
+        padding: 12px;
+        margin: 8px 0;
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    .file-item:hover {
+        transform: translateX(5px);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    }
+    .file-info {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        flex: 1;
+    }
+    .file-icon { font-size: 32px; }
+    .file-details { flex: 1; }
+    .file-name {
+        font-weight: bold;
+        color: #333;
+        word-break: break-all;
+    }
+    .file-meta {
+        color: #666;
+        font-size: 12px;
+        margin-top: 4px;
+    }
+    .file-actions {
+        display: flex;
+        gap: 15px;
+    }
+    .file-actions a {
+        text-decoration: none;
+        font-size: 20px;
+        transition: transform 0.2s;
+    }
+    .file-actions a:hover { transform: scale(1.1); }
+    
+    /* Пагинация */
+    .pagination {
+        text-align: center;
+        margin-top: 25px;
+        padding: 15px;
+    }
+    .pagination a {
+        margin: 0 5px;
+        padding: 5px 10px;
+        text-decoration: none;
+        color: #007bff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .pagination a:hover {
+        background: #007bff;
+        color: white;
+    }
+    .pagination span {
+        margin: 0 10px;
+        color: #666;
+    }
+    
+    input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}☁️ Облачное хранилище{% endblock %}
+
+{% block content %}
+<!-- Drag & Drop зона -->
+<div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+    <div style="font-size: 48px; margin-bottom: 10px;">📁</div>
+    <div>Перетащите файлы сюда или кликните для выбора</div>
+    <div style="font-size: 12px; color: #999; margin-top: 10px;">Поддерживаются любые файлы</div>
+    <input type="file" id="fileInput" multiple style="display:none">
+</div>
+
+<div class="buttons">
+    <button onclick="selectAll()">✅ Выделить всё</button>
+    <button onclick="deselectAll()">❌ Снять выделение</button>
+    <button onclick="deleteSelected()">🗑️ Удалить выбранные</button>
+    <button onclick="downloadSelected()">📦 Скачать ZIP</button>
+</div>
+
+<div class="sort-bar">
+    <strong>📂 Сортировать:</strong>
+    <a href="?sort=name_asc&page={{ page }}">📝 Имя А-Я</a> |
+    <a href="?sort=name_desc&page={{ page }}">📝 Имя Я-А</a> |
+    <a href="?sort=date_desc&page={{ page }}">📅 Новые</a> |
+    <a href="?sort=date_asc&page={{ page }}">📅 Старые</a> |
+    <a href="?sort=size_desc&page={{ page }}">📊 Большие</a> |
+    <a href="?sort=size_asc&page={{ page }}">📊 Маленькие</a>
+</div>
+
+<h2>📄 Файлы</h2>
+<ul class="file-list" id="fileList">
+    {% for file in files %}
+    <li class="file-item">
+        <div class="file-info">
+            <input type="checkbox" class="file-checkbox" value="{{ file.id }}">
+            <span class="file-icon">{{ file.icon }}</span>
+            <div class="file-details">
+                <div class="file-name">{{ file.name }}</div>
+                <div class="file-meta">{{ file.size }} | {{ file.date.strftime('%Y-%m-%d %H:%M') }}</div>
+            </div>
+        </div>
+        <div class="file-actions">
+            <a href="/download/{{ file.id }}" title="Скачать">📥</a>
+            <a href="#" onclick="confirmDelete({{ file.id }})" title="Удалить">🗑️</a>
+        </div>
+    </li>
+    {% else %}
+    <li style="text-align: center; padding: 40px; color: #999;">
+        📂 Нет файлов. Загрузите что-нибудь!
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="pagination">
+    {% if page > 1 %}
+        <a href="?sort={{ sort_by }}&page={{ page-1 }}">◀ Предыдущая</a>
+    {% endif %}
+    <span>Страница {{ page }} из {{ total_pages }}</span>
+    {% if page < total_pages %}
+        <a href="?sort={{ sort_by }}&page={{ page+1 }}">Следующая ▶</a>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Drag & Drop
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drag-over');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const files = e.dataTransfer.files;
+        uploadFiles(files);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        uploadFiles(e.target.files);
+    });
+
+    function uploadFiles(files) {
+        if (files.length === 0) return;
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+            formData.append('files', files[i]);
+        }
+        fetch('/upload', {
+            method: 'POST',
+            body: formData
+        }).then(() => {
+            window.location.reload();
+        }).catch(err => {
+            console.error('Upload error:', err);
+            window.location.reload();
+        });
+    }
+
+    function selectAll() {
+        document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = true);
+    }
+    function deselectAll() {
+        document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+    }
+    function deleteSelected() {
+        const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+        if (checkboxes.length === 0) {
+            alert('Выберите файлы для удаления');
+            return;
+        }
+        if (confirm(`Удалить ${checkboxes.length} файл(ов)?`)) {
+            const ids = Array.from(checkboxes).map(cb => cb.value);
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/delete_multiple';
+            ids.forEach(id => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'file_ids';
+                input.value = id;
+                form.appendChild(input);
+            });
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+    function downloadSelected() {
+        const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+        if (checkboxes.length === 0) {
+            alert('Выберите файлы для скачивания');
+            return;
+        }
+        const ids = Array.from(checkboxes).map(cb => cb.value);
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/download_multiple';
+        ids.forEach(id => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'file_ids';
+            input.value = id;
+            form.appendChild(input);
+        });
+        document.body.appendChild(form);
+        form.submit();
+    }
+    function confirmDelete(file_id) {
+        if (confirm('Удалить этот файл?')) {
+            window.location.href = '/delete/' + file_id;
+        }
+    }
+</script>
+{% endblock %}

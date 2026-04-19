@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Cloud Lab{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; }
+        
+        /* Navbar */
+        .navbar {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            margin-right: 25px;
+            font-size: 16px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .navbar a:hover {
+            background: #34495e;
+        }
+        .navbar .active {
+            background: #3498db;
+        }
+        
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        /* Flash сообщения */
+        .flash {
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 5px;
+            animation: fadeIn 0.5s;
+        }
+        .flash.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .flash.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .navbar a { margin-right: 10px; font-size: 14px; }
+            .container { padding: 10px; }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="navbar">
+        <a href="/" {% if request.endpoint == 'cloud.index' %}class="active"{% endif %}>☁️ Облако</a>
+        <a href="/monitor" {% if request.endpoint == 'monitor.index' %}class="active"{% endif %}>📊 Мониторинг</a>
+        <a href="/diagnose" {% if request.endpoint == 'diagnose.index' %}class="active"{% endif %}>🔍 Диагностика</a>
+    </div>
+    
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message | safe }}</div>
+            {% endfor %}
+        {% endwith %}
+        
+        <h1>{% block page_title %}Cloud Lab{% endblock %}</h1>
+        
+        {% block content %}{% endblock %}
+    </div>
+    
+    <script>
+        // Общие скрипты
+        {% block extra_js %}{% endblock %}
+    </script>
+</body>
+</html>
