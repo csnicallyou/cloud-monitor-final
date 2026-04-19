@@ -4,6 +4,19 @@ import psycopg2
 import subprocess
 from datetime import datetime
 
+
+def human_readable_size(size_bytes):
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024**2:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024**3:
+        return f"{size_bytes / 1024**2:.1f} MB"
+    else:
+        return f"{size_bytes / 1024**3:.1f} GB"
+
+
+
 app = Flask(__name__)
 
 UPLOAD_FOLDER = '/home/csn/uploads'
@@ -37,7 +50,7 @@ def index():
 
     file_list = ''
     for row in rows:
-        file_list += f'<li>{row[1]} ({row[2]} bytes) - uploaded at {row[3]}</li>'
+        file_list += f'<li>{row[1]} ({human_readable_size(row[2])}) - uploaded at {row[3]}</li>'
 
     return NAV_BAR + f'''
     <h1>Cloud Lab</h1>
