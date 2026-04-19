@@ -16,7 +16,17 @@ jobs:
     - name: Deploy application
       run: |
         cd /home/csn
-        pkill -f "python cloud.py" || true
+        echo "Stopping Flask..."
+        pkill -9 -f "python.*cloud.py" || true
+        sleep 2
+        
+        echo "Starting Flask..."
         source /home/csn/cloud_lab_env/bin/activate
-        nohup python cloud.py > /home/csn/flask.log 2>&1 &
+        nohup python /home/csn/cloud.py > /home/csn/flask.log 2>&1 &
+        sleep 5
+        
+        echo "Checking Flask..."
+        curl -I http://127.0.0.1:8080/ || echo "ERROR: Flask not responding"
+        ps aux | grep cloud.py | grep -v grep || echo "ERROR: Flask not running"
+        
         echo "✅ Deployment finished at $(date)"
