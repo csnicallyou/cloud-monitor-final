@@ -50,8 +50,7 @@ def index():
 
     file_list = ''
     for row in rows:
-        file_list += f'<li>{row[1]} ({human_readable_size(row[2])}) - uploaded at {row[3]}</li>'
-
+          file_list += f'<li>{row[1]} ({human_readable_size(row[2])}) - uploaded at {row[3]} - <a href="/download/{row[0]}">📥 Скачать</a></li>'
     return NAV_BAR + f'''
     <h1>Cloud Lab</h1>
     <form action="/upload" method="post" enctype="multipart/form-data">
@@ -554,6 +553,24 @@ def diagnose_full(component):
     output.append('<br><a href="/diagnose">← Назад к диагностике</a>')
 
     return NAV_BAR + "\n".join(output)
+
+
+@app.route('/download/<int:file_id>')
+def download(file_id):
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM files WHERE id = %s", (file_id,))
+    row = cur.fetchone()
+    cur.close()
+    
+    if row:
+        filename = row[0]
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        if os.path.exists(filepath):
+            from flask import send_file
+            return send_file(filepath, as_attachment=True, download_name=filename)
+    
+    return "File not found", 404
+
 
 
 if __name__ == '__main__':
