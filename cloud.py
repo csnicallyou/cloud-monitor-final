@@ -1,9 +1,9 @@
-from flask import Flask, request, redirect, url_for
+from flask import Flask, request, redirect, url_for, send_file, flash, get_flashed_messages
 import os
 import psycopg2
 import subprocess
 from datetime import datetime
-
+from werkzeug.utils import secure_filename
 
 def human_readable_size(size_bytes):
     if size_bytes < 1024:
@@ -15,9 +15,8 @@ def human_readable_size(size_bytes):
     else:
         return f"{size_bytes / 1024**3:.1f} GB"
 
-
-
 app = Flask(__name__)
+app.secret_key = 'supersecretkey12345_for_cloud_lab_project_2026'
 
 UPLOAD_FOLDER = '/home/csn/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -30,6 +29,7 @@ conn = psycopg2.connect(
     user='cloud_user',
     password='lab123'
 )
+
 
 # Навигация
 NAV_BAR = '''
@@ -85,11 +85,20 @@ def index():
     </script>
     '''
 
+        # Flash messages HTML
+    flash_html = ''
+    flashes = get_flashed_messages(with_categories=True)
+    for category, message in flashes:
+        color = '#d4edda' if category == 'success' else '#fff3cd'
+        border = '#28a745' if category == 'success' else '#ffc107'
+        flash_html += f'<div style="background: {color}; border-left: 4px solid {border}; padding: 10px; margin: 10px 0;">{message}</div>'
+
     return NAV_BAR + js_script + f'''
     <h1>Cloud Lab</h1>
+    {flash_html}
     <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <input type="submit" value="Upload">
+        <input type="file" name="files" multiple>
+        <input type="submit" value="Upload Files">
     </form>
     <h2>Files:</h2>
     <ul>
@@ -103,25 +112,65 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    file = request.files['file']
-    if file:
-        filename = file.filename
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        size = os.path.getsize(filepath)
-
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO files (name, size_bytes, uploaded_at) VALUES (%s, %s, %s)",
-            (filename, size, datetime.now())
-        )
-        conn.commit()
-        cur.close()
-
+    uploaded_files = request.files.getlist('files')
+    
+    if not uploaded_files or uploaded_files[0].filename == '':
+        flash('No files selected', 'warning')
         return redirect(url_for('index'))
-    return 'No file uploaded'
-
+    
+    saved_count = 0
+    errors = []
+    max_size_mb = 100
+    
+    for file in uploaded_files:
+        if file and file.filename:
+            # Безопасное имя файла (убираем пути)
+            safe_filename = secure_filename(file.filename)
+            
+            if not safe_filename:
+                errors.append(f"Invalid filename: {file.filename}")
+                continue
+            
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+            
+            # Проверка на дубликат
+            if os.path.exists(filepath):
+                errors.append(f"{safe_filename}: already exists")
+                continue
+            
+            # Проверка размера (100 MB limit)
+            file.seek(0, os.SEEK_END)
+            size_bytes = file.tell()
+            file.seek(0)
+            
+            if size_bytes > max_size_mb * 1024 * 1024:
+                errors.append(f"{safe_filename}: exceeds {max_size_mb} MB")
+                continue
+            
+            # Сохраняем файл
+            file.save(filepath)
+            
+            # Реальный размер (на всякий случай)
+            actual_size = os.path.getsize(filepath)
+            
+            # Сохраняем в БД
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO files (name, size_bytes, uploaded_at) VALUES (%s, %s, %s)",
+                (safe_filename, actual_size, datetime.now())
+            )
+            conn.commit()
+            cur.close()
+            
+            saved_count += 1
+    
+    # Flash сообщения
+    if saved_count > 0:
+        flash(f'✅ Uploaded {saved_count} file(s)', 'success')
+    if errors:
+        flash(f'⚠️ Errors: {", ".join(errors[:3])}', 'warning')
+    
+    return redirect(url_for('index'))
 # ========== СТРАНИЦА МОНИТОРИНГА ==========
 
 @app.route('/monitor')
