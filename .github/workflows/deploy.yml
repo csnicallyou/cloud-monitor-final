@@ -21,11 +21,17 @@ jobs:
         sleep 2
 
         echo "Starting Flask..."
-        /bin/bash -c 'source /home/csn/cloud_lab_env/bin/activate && nohup python /home/csn/cloud.py > /home/csn/flask.log 2>&1 &'
+        cd /home/csn
+        /home/csn/cloud_lab_env/bin/python /home/csn/cloud.py > /home/csn/flask.log 2>&1 &
         sleep 5
 
         echo "Checking Flask..."
-        curl -I http://127.0.0.1:8080/ || echo "ERROR: Flask not responding"
-        ps aux | grep cloud.py | grep -v grep || echo "ERROR: Flask not running"
+        if curl -f http://127.0.0.1:8080/; then
+          echo "✅ Flask is running"
+        else
+          echo "❌ Flask failed to start"
+          cat /home/csn/flask.log
+          exit 1
+        fi
 
         echo "✅ Deployment finished at $(date)"
