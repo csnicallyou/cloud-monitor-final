@@ -94,11 +94,11 @@ def index():
         flash_html += f'<div style="background: {color}; border-left: 4px solid {border}; padding: 10px; margin: 10px 0;">{message}</div>'
 
     return NAV_BAR + js_script + f'''
-    <h1>Cloud Lab</h1>
+    <h1>Cloud Lab - Multiple Upload</h1>
     {flash_html}
     <form action="/upload" method="post" enctype="multipart/form-data">
         <input type="file" name="files" multiple>
-        <input type="submit" value="Upload Files">
+        <input type="submit" value="Upload Files (multiple)">
     </form>
     <h2>Files:</h2>
     <ul>
