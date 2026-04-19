@@ -1,22 +1,10 @@
-from flask import Flask, request, redirect, url_for, send_file, flash, get_flashed_messages
+from flask import Flask, request, redirect, url_for
 import os
 import psycopg2
 import subprocess
 from datetime import datetime
-from werkzeug.utils import secure_filename
-
-def human_readable_size(size_bytes):
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024**2:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024**3:
-        return f"{size_bytes / 1024**2:.1f} MB"
-    else:
-        return f"{size_bytes / 1024**3:.1f} GB"
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey12345_for_cloud_lab_project_2026'
 
 UPLOAD_FOLDER = '/home/csn/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -30,147 +18,60 @@ conn = psycopg2.connect(
     password='lab123'
 )
 
-
 # Навигация
 NAV_BAR = '''
 <div style="background: #f0f0f0; padding: 10px; margin-bottom: 20px;">
     <a href="/" style="margin-right: 20px;">☁️ Облако</a>
     <a href="/monitor" style="margin-right: 20px;">📊 Мониторинг</a>
     <a href="/diagnose" style="margin-right: 20px;">🔍 Диагностика</a>
-
+    <a href="/diagnose_advanced" style="margin-right: 20px;">📈 Анализ</a>
 </div>
 '''
 
 @app.route('/')
 def index():
-    page = request.args.get('page', 1, type=int)
-    per_page = 5  # файлов на страницу
-    offset = (page - 1) * per_page
-    
     cur = conn.cursor()
-    # Получаем общее количество файлов
-    cur.execute("SELECT COUNT(*) FROM files")
-    total = cur.fetchone()[0]
-    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-    
-    # Получаем файлы для текущей страницы
-    cur.execute("""
-        SELECT id, name, size_bytes, uploaded_at 
-        FROM files 
-        ORDER BY id DESC 
-        LIMIT %s OFFSET %s
-    """, (per_page, offset))
+    cur.execute("SELECT id, name, size_bytes, uploaded_at FROM files ORDER BY id DESC")
     rows = cur.fetchall()
     cur.close()
 
     file_list = ''
     for row in rows:
-        file_list += f'<li>{row[1]} ({human_readable_size(row[2])}) - uploaded at {row[3]} - <a href="/download/{row[0]}">📥 Скачать</a> - <a href="#" onclick="confirmDelete({row[0]})">🗑️ Удалить</a></li>'
+        file_list += f'<li>{row[1]} ({row[2]} bytes) - uploaded at {row[3]}</li>'
 
-    # Пагинация
-    pagination = ''
-    if page > 1:
-        pagination += f'<a href="?page={page-1}">◀ Предыдущая</a> '
-    pagination += f'Страница {page} из {total_pages} '
-    if page < total_pages:
-        pagination += f'<a href="?page={page+1}">Следующая ▶</a>'
-
-    js_script = '''
-    <script>
-    function confirmDelete(file_id) {
-        if (confirm('Вы уверены, что хотите удалить этот файл?')) {
-            window.location.href = '/delete/' + file_id;
-        }
-    }
-    </script>
-    '''
-
-        # Flash messages HTML
-    flash_html = ''
-    flashes = get_flashed_messages(with_categories=True)
-    for category, message in flashes:
-        color = '#d4edda' if category == 'success' else '#fff3cd'
-        border = '#28a745' if category == 'success' else '#ffc107'
-        flash_html += f'<div style="background: {color}; border-left: 4px solid {border}; padding: 10px; margin: 10px 0;">{message}</div>'
-
-    return NAV_BAR + js_script + f'''
-    <h1>Cloud Lab - Multiple Upload</h1>
-    {flash_html}
+    return NAV_BAR + f'''
+    <h1>Cloud Lab</h1>
     <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="files" multiple>
-        <input type="submit" value="Upload Files (multiple)">
+        <input type="file" name="file">
+        <input type="submit" value="Upload">
     </form>
     <h2>Files:</h2>
     <ul>
         {file_list}
     </ul>
-    <div style="margin-top: 15px;">
-        {pagination}
-    </div>
     '''
-
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    uploaded_files = request.files.getlist('files')
-    
-    if not uploaded_files or uploaded_files[0].filename == '':
-        flash('No files selected', 'warning')
+    file = request.files['file']
+    if file:
+        filename = file.filename
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        size = os.path.getsize(filepath)
+
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO files (name, size_bytes, uploaded_at) VALUES (%s, %s, %s)",
+            (filename, size, datetime.now())
+        )
+        conn.commit()
+        cur.close()
+
         return redirect(url_for('index'))
-    
-    saved_count = 0
-    errors = []
-    max_size_mb = 100
-    
-    for file in uploaded_files:
-        if file and file.filename:
-            # Безопасное имя файла (убираем пути)
-            safe_filename = secure_filename(file.filename)
-            
-            if not safe_filename:
-                errors.append(f"Invalid filename: {file.filename}")
-                continue
-            
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
-            
-            # Проверка на дубликат
-            if os.path.exists(filepath):
-                errors.append(f"{safe_filename}: already exists")
-                continue
-            
-            # Проверка размера (100 MB limit)
-            file.seek(0, os.SEEK_END)
-            size_bytes = file.tell()
-            file.seek(0)
-            
-            if size_bytes > max_size_mb * 1024 * 1024:
-                errors.append(f"{safe_filename}: exceeds {max_size_mb} MB")
-                continue
-            
-            # Сохраняем файл
-            file.save(filepath)
-            
-            # Реальный размер (на всякий случай)
-            actual_size = os.path.getsize(filepath)
-            
-            # Сохраняем в БД
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO files (name, size_bytes, uploaded_at) VALUES (%s, %s, %s)",
-                (safe_filename, actual_size, datetime.now())
-            )
-            conn.commit()
-            cur.close()
-            
-            saved_count += 1
-    
-    # Flash сообщения
-    if saved_count > 0:
-        flash(f'✅ Uploaded {saved_count} file(s)', 'success')
-    if errors:
-        flash(f'⚠️ Errors: {", ".join(errors[:3])}', 'warning')
-    
-    return redirect(url_for('index'))
+    return 'No file uploaded'
+
 # ========== СТРАНИЦА МОНИТОРИНГА ==========
 
 @app.route('/monitor')
@@ -213,13 +114,13 @@ def monitor():
     if page < total_pages:
         pagination += f'<a href="?page={page+1}">Следующая ▶</a>'
 
-    return NAV_BAR + js_script + f'''
+    return NAV_BAR + f'''
     <h1>Мониторинг сервера</h1>
 
     <table border="1" cellpadding="5" style="width:100%; border-collapse: collapse;">
         <tr bgcolor="#ddd">
             <th>Время</th> <th>CPU Load</th> <th>RAM Free</th> <th>Disk Free</th> <th>nginx</th> <th>PostgreSQL</th>
-        <tr>
+        </tr>
         {table_rows}
     </table>
 
@@ -260,66 +161,36 @@ def diagnose_page():
 
     # 2. RAM секция
     output.append("<h2>💾 RAM</h2>")
-    free = subprocess.run('free -h', capture_output=True, text=True, shell=True).stdout
-    output.append("<pre>")
-    output.append(free)
-    output.append("</pre>")
+    free = subprocess.run('free -m', capture_output=True, text=True, shell=True).stdout
     for line in free.split('\n'):
         if 'Mem:' in line:
             parts = line.split()
-            total = parts[1]
-            available = parts[-1]
-            output.append(f"<p>✅ Использовано: всего {total}, доступно {available}</p>")
+            total = int(parts[1])
+            available = int(parts[-1])
+            percent = (total - available) / total * 100
+            if percent > 90:
+                output.append(f"<p>🔴 КРИТИЧНО: Использовано {percent:.1f}% RAM (свободно {available} MB из {total} MB)</p>")
+            elif percent > 75:
+                output.append(f"<p>⚠️ ВНИМАНИЕ: Использовано {percent:.1f}% RAM (свободно {available} MB из {total} MB)</p>")
+            else:
+                output.append(f"<p>✅ НОРМА: Использовано {percent:.1f}% RAM (свободно {available} MB из {total} MB)</p>")
     output.append(f'<p><a href="/diagnose_full/ram"><button>🔍 Полная диагностика RAM</button></a></p>')
     output.append("<hr>")
 
-        # 3. DISK секция
+    # 3. DISK секция
     output.append("<h2>💿 DISK</h2>")
-    df = subprocess.run('df -h', capture_output=True, text=True, shell=True).stdout
-    output.append("<pre>")
-    output.append(df)
-    output.append("</pre>")
-    
-    # Анализ реальных разделов (исключая виртуальные, но включая /tmp)
-    has_problem = False
-    critical = False
-    
-    for line in df.split('\n')[1:]:
-        if not line:
-            continue
-        
-        # Исключаем виртуальные разделы, НО оставляем /tmp
-        if 'tmpfs' in line and '/tmp' not in line:
-            continue
-        if 'devtmpfs' in line or 'efivarfs' in line or 'none' in line:
-            continue
-        
-        parts = line.split()
+    df = subprocess.run('df -h /', capture_output=True, text=True, shell=True).stdout
+    lines = df.split('\n')
+    if len(lines) >= 2:
+        parts = lines[1].split()
         if len(parts) >= 5:
             use_percent = parts[4].replace('%', '')
-            mount = parts[5]
-            size = parts[1]
-            available = parts[3]
-            
-            if use_percent.isdigit():
-                percent = int(use_percent)
-                if percent > 85:
-                    output.append(f"<p>🔴 КРИТИЧНО: {mount} - {percent}% использовано (всего: {size}, свободно: {available})</p>")
-                    critical = True
-                    has_problem = True
-                elif percent > 70:
-                    output.append(f"<p>⚠️ ВНИМАНИЕ: {mount} - {percent}% использовано (всего: {size}, свободно: {available})</p>")
-                    has_problem = True
-                else:
-                    output.append(f"<p>✅ {mount} - {percent}% использовано (всего: {size}, свободно: {available})</p>")
-    
-    if not has_problem:
-        output.append("<p>✅ Все разделы в норме</p>")
-    elif critical:
-        output.append("<p>💡 Требуется срочная очистка диска</p>")
-    else:
-        output.append("<p>💡 Рекомендуется очистить диск</p>")
-
+            if int(use_percent) > 85:
+                output.append(f"<p>🔴 КРИТИЧНО: Диск заполнен на {use_percent}%</p>")
+            elif int(use_percent) > 70:
+                output.append(f"<p>⚠️ ВНИМАНИЕ: Диск заполнен на {use_percent}%</p>")
+            else:
+                output.append(f"<p>✅ НОРМА: Диск заполнен на {use_percent}%</p>")
     output.append(f'<p><a href="/diagnose_full/disk"><button>🔍 Полная диагностика DISK</button></a></p>')
     output.append("<hr>")
 
@@ -361,6 +232,7 @@ def diagnose_full(component):
         output.append("ПОЛНАЯ ДИАГНОСТИКА CPU")
         output.append("=" * 60 + "\n")
 
+        # 1. Load average
         output.append("[1/5] Проверка общей загрузки CPU...")
         nproc = subprocess.run('nproc', capture_output=True, text=True, shell=True).stdout.strip()
         uptime = subprocess.run('uptime', capture_output=True, text=True, shell=True).stdout.strip()
@@ -380,6 +252,7 @@ def diagnose_full(component):
                 output.append(f"      ✅ НОРМА: load average ({load_1}) в пределах нормы")
         output.append("")
 
+        # 2. Топ процессов по CPU
         output.append("[2/5] Проверка процессов, потребляющих CPU...")
         ps_output = subprocess.run('ps aux --sort=-%cpu | head -10', capture_output=True, text=True, shell=True).stdout
         output.append("      ТОП-10 ПРОЦЕССОВ ПО CPU:")
@@ -390,11 +263,13 @@ def diagnose_full(component):
                     output.append(f"      {parts[10][:40]}... - CPU: {parts[2]}%")
         output.append("")
 
+        # 3. Системные прерывания
         output.append("[3/5] Проверка системных прерываний...")
         interrupts = subprocess.run('cat /proc/interrupts | head -5', capture_output=True, text=True, shell=True).stdout
         output.append(f"      {interrupts.strip()}")
         output.append("")
 
+        # 4. Логи ошибок
         output.append("[4/5] Проверка логов на ошибки CPU...")
         dmesg = subprocess.run('dmesg -T | grep -i "cpu" | tail -5', capture_output=True, text=True, shell=True).stdout
         if dmesg.strip():
@@ -406,6 +281,7 @@ def diagnose_full(component):
             output.append("      ✅ Ошибок не найдено")
         output.append("")
 
+        # 5. Рекомендации
         output.append("[5/5] АНАЛИЗ И РЕКОМЕНДАЦИИ:")
         if load_vals and float(load_vals[0][0]) > int(nproc):
             output.append("      🔴 Сервер перегружен! Что делать:")
@@ -496,91 +372,105 @@ def diagnose_full(component):
         output.append("")
 
         output.append("[5/5] АНАЛИЗ И РЕКОМЕНДАЦИИ:")
-        warning_count = 0
         for line in df.split('\n')[1:]:
             if line and '/dev/' in line:
                 parts = line.split()
                 if len(parts) >= 5:
                     use_percent = parts[4].replace('%', '')
-                    mount = parts[5]
-                    if use_percent.isdigit() and int(use_percent) > 85:
-                        output.append(f"      🔴 КРИТИЧНО: {mount} заполнен на {use_percent}%")
-                        output.append(f"      💡 РЕШЕНИЕ: Очистите {mount}")
-                        warning_count += 1
+                    if int(use_percent) > 85:
+                        output.append(f"      🔴 Диск {parts[5]} заполнен на {use_percent}%! Что делать:")
+                        output.append(f"         1. Очистите большие файлы в этой папке")
+                        output.append(f"         2. Удалите старые логи")
                     elif int(use_percent) > 70:
-                        output.append(f"      ⚠️ ВНИМАНИЕ: {mount} заполнен на {use_percent}%")
-                        warning_count += 1
-        if warning_count == 0:
-            output.append("      ✅ Диски в норме")
+                        output.append(f"      ⚠️ Диск {parts[5]} заполнен на {use_percent}%")
+                    else:
+                        output.append(f"      ✅ Диск {parts[5]} в норме")
+
 
     elif component == 'nginx':
-        output.append("=" * 60)
-        output.append("ПОЛНАЯ ДИАГНОСТИКА NGINX")
-        output.append("=" * 60 + "\n")
+	    output.append("=" * 60)
+	    output.append("ПОЛНАЯ ДИАГНОСТИКА NGINX")
+	    output.append("=" * 60 + "\n")
 
-        warning_count = 0
-        error_count = 0
+	    # Счётчики для предупреждений и ошибок
+	    warning_count = 0
+	    error_count = 0
 
-        output.append("[1/5] Проверка статуса NGINX...")
-        status = subprocess.run('systemctl is-active nginx', capture_output=True, text=True, shell=True).stdout.strip()
-        output.append(f"      Статус: {status}")
-        if status != 'active':
-            output.append("      🔴 NGINX НЕ РАБОТАЕТ!")
-            error_count += 1
-        output.append("")
+	    # 1. Статус
+	    output.append("[1/5] Проверка статуса NGINX...")
+	    status = subprocess.run('systemctl is-active nginx', capture_output=True, text=True, shell=True).stdout.strip()
+	    output.append(f"      Статус: {status}")
+	    if status != 'active':
+	        output.append("      🔴 NGINX НЕ РАБОТАЕТ!")
+	        error_count += 1
+	    output.append("")
 
-        output.append("[2/5] Проверка конфигурации NGINX...")
-        config_test = subprocess.run('nginx -t 2>&1', capture_output=True, text=True, shell=True).stdout
-        if 'successful' in config_test and 'error' not in config_test.lower():
-            output.append("      ✅ Конфигурация верна")
-        elif 'warn' in config_test.lower():
-            warn_lines = [line for line in config_test.split('\n') if 'warn' in line.lower()]
-            warning_count += len(warn_lines)
-            output.append(f"      ⚠️ Есть {len(warn_lines)} предупреждений, но конфиг работает")
-            for line in warn_lines[:3]:
-                output.append(f"        - {line.strip()[:80]}")
-        else:
-            error_count += 1
-            output.append(f"      ❌ Ошибка в конфигурации")
-        output.append("")
+	    # 2. Проверка конфигурации
+	    output.append("[2/5] Проверка конфигурации NGINX...")
+	    config_test = subprocess.run('nginx -t 2>&1', capture_output=True, text=True, shell=True).stdout
+	    if 'successful' in config_test and 'error' not in config_test.lower():
+	        output.append("      ✅ Конфигурация верна")
+	    elif 'warn' in config_test.lower():
+	        warn_lines = [line for line in config_test.split('\n') if 'warn' in line.lower()]
+	        warning_count += len(warn_lines)
+	        output.append(f"      ⚠️ Есть {len(warn_lines)} предупреждений, но конфиг работает")
+	        for line in warn_lines[:3]:
+	            output.append(f"        - {line.strip()[:80]}")
+	    else:
+	        error_count += 1
+	        output.append(f"      ❌ Ошибка в конфигурации")
+	        for line in config_test.split('\n')[:3]:
+	            if line.strip():
+	                output.append(f"        {line.strip()[:80]}")
+	    output.append("")
 
-        output.append("[3/5] Проверка слушающих портов...")
-        ports = subprocess.run('ss -tulpn | grep -E ":80|:443"', capture_output=True, text=True, shell=True).stdout
-        if ports.strip():
-            output.append(f"      ✅ NGINX слушает порты 80/443")
-        else:
-            output.append("      ❌ NGINX не слушает порты 80/443!")
-            error_count += 1
-        output.append("")
+	    # 3. Проверка портов
+	    output.append("[3/5] Проверка слушающих портов...")
+	    ports = subprocess.run('ss -tulpn | grep -E ":80|:443"', capture_output=True, text=True, shell=True).stdout
+	    if ports.strip():
+	        output.append(f"      ✅ NGINX слушает порты 80/443")
+	    else:
+	        output.append("      ❌ NGINX не слушает порты 80/443!")
+	        error_count += 1
+	    output.append("")
 
-        output.append("[4/5] Проверка логов ошибок NGINX...")
-        logs = subprocess.run('tail -50 /var/log/nginx/error.log 2>/dev/null', capture_output=True, text=True, shell=True).stdout
-        if logs.strip():
-            error_lines = [line for line in logs.split('\n') if 'error' in line.lower()]
-            output.append(f"      ⚠️ В логах найдено ошибок: {len(error_lines)}")
-            for line in error_lines[:3]:
-                output.append(f"        - {line.strip()[:80]}")
-        else:
-            output.append("      ✅ Ошибок в логах не найдено")
-        output.append("")
+	    # 4. Логи ошибок
+	    output.append("[4/5] Проверка логов ошибок NGINX...")
+	    logs = subprocess.run('tail -50 /var/log/nginx/error.log 2>/dev/null', capture_output=True, text=True, shell=True).stdout
+	    if logs.strip():
+	        error_lines = [line for line in logs.split('\n') if 'error' in line.lower()]
+	        warn_lines_log = [line for line in logs.split('\n') if 'warn' in line.lower()]
+	        warning_count += len(warn_lines_log)
+	        error_count += len(error_lines)
+	        output.append(f"      ⚠️ В логах найдено: {len(error_lines)} ошибок, {len(warn_lines_log)} предупреждений")
+	        for line in (error_lines + warn_lines_log)[:5]:
+	            output.append(f"        - {line.strip()[:80]}")
+	    else:
+	        output.append("      ✅ Ошибок в логах не найдено")
+	    output.append("")
 
-        output.append("[5/5] АНАЛИЗ И РЕКОМЕНДАЦИИ:")
-        output.append(f"      Статистика: {error_count} ошибок, {warning_count} предупреждений")
-        if status != 'active':
-            output.append("      🔴 NGINX не запущен. Выполните:")
-            output.append("         sudo systemctl start nginx")
-        elif error_count > 0:
-            output.append("      🔴 Обнаружены ошибки. Что делать:")
-            output.append("         1. Проверьте конфигурацию: sudo nginx -t")
-            output.append("         2. Посмотрите логи: tail -f /var/log/nginx/error.log")
-            output.append("         3. Исправьте ошибки и перезапустите: sudo systemctl restart nginx")
-        elif warning_count > 0:
-            output.append("      ⚠️ Обнаружены предупреждения. Рекомендации:")
-            output.append("         1. Предупреждения не критичны, но их стоит устранить")
-            output.append("         2. Запустите sudo nginx -t для деталей")
-        else:
-            output.append("      ✅ NGINX работает нормально")
+	    # 5. Итоговый анализ с количеством
+	    output.append("[5/5] АНАЛИЗ И РЕКОМЕНДАЦИИ:")
+	    output.append(f"      Статистика: {error_count} ошибок, {warning_count} предупреждений")
+	    output.append("")
 
+	    if status != 'active':
+	        output.append("      🔴 NGINX не запущен. Выполните:")
+	        output.append("         sudo systemctl start nginx")
+	        output.append("         sudo systemctl enable nginx")
+	    elif error_count > 0:
+	        output.append("      🔴 Обнаружены ошибки. Что делать:")
+	        output.append("         1. Проверьте конфигурацию: sudo nginx -t")
+	        output.append("         2. Посмотрите логи: tail -f /var/log/nginx/error.log")
+	        output.append("         3. Исправьте ошибки и перезапустите: sudo systemctl restart nginx")
+	    elif warning_count > 0:
+	        output.append("      ⚠️ Обнаружены предупреждения. Рекомендации:")
+	        output.append("         1. Предупреждения не критичны, но их стоит устранить")
+	        output.append("         2. Запустите sudo nginx -t для деталей")
+	        output.append("         3. При необходимости увеличьте параметры в конфиге")
+	    else:
+	        output.append("      ✅ NGINX работает нормально, ошибок и предупреждений нет")
+	    
     elif component == 'postgres':
         output.append("=" * 60)
         output.append("ПОЛНАЯ ДИАГНОСТИКА POSTGRESQL")
@@ -642,50 +532,82 @@ def diagnose_full(component):
     return NAV_BAR + "\n".join(output)
 
 
-@app.route('/download/<int:file_id>')
-def download(file_id):
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM files WHERE id = %s", (file_id,))
-    row = cur.fetchone()
-    cur.close()
-    
-    if row:
-        filename = row[0]
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if os.path.exists(filepath):
-            from flask import send_file
-            return send_file(filepath, as_attachment=True, download_name=filename)
-    
-    return "File not found", 404
+# ========== СТРАНИЦА АНАЛИЗА (С ДАННЫМИ ИЗ PROMETHEUS) ==========
 
+@app.route('/diagnose_advanced')
+def diagnose_advanced():
+    import requests
 
-@app.route('/delete/<int:file_id>')
-def delete_file(file_id):
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM files WHERE id = %s", (file_id,))
-    row = cur.fetchone()
-    
-    if not row:
-        cur.close()
-        return "File not found", 404
-    
-    filename = row[0]
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    # Удаляем файл из файловой системы
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    
-    # Удаляем запись из БД
-    cur.execute("DELETE FROM files WHERE id = %s", (file_id,))
-    conn.commit()
-    cur.close()
-    
-    return redirect(url_for('index'))
+    output = []
+    output.append("<h1>Диагностика сервера (анализ)</h1>")
+    output.append(f"<p>Время: {datetime.now()}</p>")
+    output.append("<p><a href='/monitor'>← Назад к мониторингу</a> | <a href='/diagnose_advanced'>🔄 Обновить</a></p>")
+
+    def query_prometheus(query):
+        try:
+            response = requests.get(
+                'http://localhost:9090/api/v1/query',
+                params={'query': query},
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data['data']['result']:
+                    return float(data['data']['result'][0]['value'][1])
+            return None
+        except:
+            return None
+
+    # CPU
+    output.append("<h2>📊 CPU</h2>")
+    cpu_value = query_prometheus('100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)')
+    if cpu_value is not None:
+        if cpu_value > 80:
+            output.append(f"<p>🔴 КРИТИЧНО: Загрузка CPU {cpu_value:.1f}%</p>")
+        elif cpu_value > 50:
+            output.append(f"<p>⚠️ ВНИМАНИЕ: Загрузка CPU {cpu_value:.1f}%</p>")
+        else:
+            output.append(f"<p>✅ НОРМА: Загрузка CPU {cpu_value:.1f}%</p>")
+    else:
+        output.append("<p>❌ Нет данных от Prometheus</p>")
+
+    # RAM
+    output.append("<h2>💾 RAM</h2>")
+    total = query_prometheus('node_memory_MemTotal_bytes')
+    available = query_prometheus('node_memory_MemAvailable_bytes')
+    if total and available:
+        ram_percent = (total - available) / total * 100
+        if ram_percent > 90:
+            output.append(f"<p>🔴 КРИТИЧНО: Использовано RAM {ram_percent:.1f}%</p>")
+        elif ram_percent > 70:
+            output.append(f"<p>⚠️ ВНИМАНИЕ: Использовано RAM {ram_percent:.1f}%</p>")
+        else:
+            output.append(f"<p>✅ НОРМА: Использовано RAM {ram_percent:.1f}%</p>")
+    else:
+        output.append("<p>❌ Нет данных от Prometheus</p>")
+
+    # DISK
+    output.append("<h2>💿 Диск</h2>")
+    total = query_prometheus('node_filesystem_size_bytes{mountpoint="/"}')
+    free = query_prometheus('node_filesystem_avail_bytes{mountpoint="/"}')
+    if total and free:
+        disk_percent = (total - free) / total * 100
+        if disk_percent > 85:
+            output.append(f"<p>🔴 КРИТИЧНО: Диск заполнен на {disk_percent:.1f}%</p>")
+        elif disk_percent > 70:
+            output.append(f"<p>⚠️ ВНИМАНИЕ: Диск заполнен на {disk_percent:.1f}%</p>")
+        else:
+            output.append(f"<p>✅ НОРМА: Диск заполнен на {disk_percent:.1f}%</p>")
+    else:
+        output.append("<p>❌ Нет данных от Prometheus</p>")
+
+    output.append("""
+    <hr>
+    <p><a href="/diagnose">← К обычной диагностике</a></p>
+    """)
+
+    return NAV_BAR + "\n".join(output)
 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True)
-# Test comment
-# CI/CD test Sun Apr 19 12:30:09 MSK 2026
-# CI/CD with systemd works perfectly
