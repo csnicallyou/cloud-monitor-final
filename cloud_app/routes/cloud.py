@@ -1,4 +1,5 @@
-from flask import Blueprint, request, redirect, url_for, send_file, flash, get_flashed_messages, Response, render_template, current_app
+from flask import Blueprint, request, redirect, url_for, send_file, flash, Response, render_template, current_app
+from flask_login import login_required, current_user
 import os
 from datetime import datetime
 from werkzeug.utils import secure_filename
@@ -10,6 +11,7 @@ from utils.helpers import human_readable_size, get_file_icon
 cloud_bp = Blueprint('cloud', __name__, url_prefix='')
 
 @cloud_bp.route('/')
+@login_required
 def index():
     page = request.args.get('page', 1, type=int)
     per_page = 5
@@ -28,16 +30,17 @@ def index():
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM files")
+    cur.execute("SELECT COUNT(*) FROM files WHERE user_id = %s", (current_user.id,))
     total = cur.fetchone()[0]
     total_pages = (total + per_page - 1) // per_page if total > 0 else 1
 
     cur.execute(f"""
         SELECT id, name, size_bytes, uploaded_at
         FROM files
+        WHERE user_id = %s
         ORDER BY {order_by}
         LIMIT %s OFFSET %s
-    """, (per_page, offset))
+    """, (current_user.id, per_page, offset))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -53,19 +56,23 @@ def index():
             'icon': get_file_icon(row[1])
         })
 
-    return render_template('cloud.html', 
+    return render_template('cloud.html',
                          files=files,
                          page=page,
                          total_pages=total_pages,
                          sort_by=sort_by)
 
 @cloud_bp.route('/upload', methods=['POST'])
+@login_required
 def upload():
     uploaded_files = request.files.getlist('files')
     if not uploaded_files or uploaded_files[0].filename == '':
         flash('No files selected', 'warning')
         return redirect(url_for('cloud.index'))
 
+    user_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], current_user.folder_name)
+    os.makedirs(user_folder, exist_ok=True)
+    
     saved_count = 0
     errors = []
 
@@ -76,7 +83,7 @@ def upload():
                 errors.append(f"Invalid: {file.filename}")
                 continue
 
-            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], safe_filename)
+            filepath = os.path.join(user_folder, safe_filename)
             if os.path.exists(filepath):
                 errors.append(f"{safe_filename} (exists)")
                 continue
@@ -87,8 +94,8 @@ def upload():
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO files (name, size_bytes, uploaded_at) VALUES (%s, %s, %s)",
-                (safe_filename, size, datetime.now())
+                "INSERT INTO files (name, size_bytes, uploaded_at, user_id) VALUES (%s, %s, %s, %s)",
+                (safe_filename, size, datetime.now(), current_user.id)
             )
             conn.commit()
             cur.close()
@@ -103,19 +110,22 @@ def upload():
     return redirect(url_for('cloud.index'))
 
 @cloud_bp.route('/delete_multiple', methods=['POST'])
+@login_required
 def delete_multiple():
     file_ids = request.form.getlist('file_ids')
+    user_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], current_user.folder_name)
+    
     deleted_count = 0
     errors = []
 
     conn = get_db_connection()
     for file_id in file_ids:
         cur = conn.cursor()
-        cur.execute("SELECT name FROM files WHERE id = %s", (file_id,))
+        cur.execute("SELECT name FROM files WHERE id = %s AND user_id = %s", (file_id, current_user.id))
         row = cur.fetchone()
         if row:
             filename = row[0]
-            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+            filepath = os.path.join(user_folder, filename)
             if os.path.exists(filepath):
                 os.remove(filepath)
             cur.execute("DELETE FROM files WHERE id = %s", (file_id,))
@@ -134,20 +144,22 @@ def delete_multiple():
     return redirect(url_for('cloud.index'))
 
 @cloud_bp.route('/download_multiple', methods=['POST'])
+@login_required
 def download_multiple():
     file_ids = request.form.getlist('file_ids')
+    user_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], current_user.folder_name)
     zip_buffer = io.BytesIO()
 
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         conn = get_db_connection()
         for file_id in file_ids:
             cur = conn.cursor()
-            cur.execute("SELECT name FROM files WHERE id = %s", (file_id,))
+            cur.execute("SELECT name FROM files WHERE id = %s AND user_id = %s", (file_id, current_user.id))
             row = cur.fetchone()
             cur.close()
             if row:
                 filename = row[0]
-                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+                filepath = os.path.join(user_folder, filename)
                 if os.path.exists(filepath):
                     zip_file.write(filepath, filename)
         conn.close()
@@ -160,32 +172,36 @@ def download_multiple():
     )
 
 @cloud_bp.route('/download/<int:file_id>')
+@login_required
 def download(file_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT name FROM files WHERE id = %s", (file_id,))
+    cur.execute("SELECT name FROM files WHERE id = %s AND user_id = %s", (file_id, current_user.id))
     row = cur.fetchone()
     cur.close()
     conn.close()
     if row:
         filename = row[0]
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+        user_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], current_user.folder_name)
+        filepath = os.path.join(user_folder, filename)
         if os.path.exists(filepath):
             return send_file(filepath, as_attachment=True, download_name=filename)
     return "File not found", 404
 
 @cloud_bp.route('/delete/<int:file_id>')
+@login_required
 def delete_file(file_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT name FROM files WHERE id = %s", (file_id,))
+    cur.execute("SELECT name FROM files WHERE id = %s AND user_id = %s", (file_id, current_user.id))
     row = cur.fetchone()
     if not row:
         cur.close()
         conn.close()
         return "File not found", 404
     filename = row[0]
-    filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    user_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], current_user.folder_name)
+    filepath = os.path.join(user_folder, filename)
     if os.path.exists(filepath):
         os.remove(filepath)
     cur.execute("DELETE FROM files WHERE id = %s", (file_id,))

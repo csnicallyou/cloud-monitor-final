@@ -7,15 +7,18 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: #f5f5f5; }
-        
+
         /* Navbar */
         .navbar {
             background: #2c3e50;
             color: white;
             padding: 15px 30px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        .navbar a {
+        .nav-left a {
             color: white;
             text-decoration: none;
             margin-right: 25px;
@@ -24,20 +27,40 @@
             border-radius: 4px;
             transition: background 0.3s;
         }
-        .navbar a:hover {
+        .nav-left a:hover {
             background: #34495e;
         }
-        .navbar .active {
+        .nav-left .active {
             background: #3498db;
         }
-        
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .user-info {
+            color: #ecf0f1;
+            font-size: 14px;
+        }
+        .logout-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .logout-btn:hover {
+            background: #c0392b;
+        }
+
         /* Container */
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
         }
-        
+
         /* Flash сообщения */
         .flash {
             padding: 12px;
@@ -55,20 +78,21 @@
             color: #856404;
             border: 1px solid #ffeeba;
         }
-        
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        
+
         h1 {
             color: #333;
             margin-bottom: 20px;
         }
-        
+
         /* Responsive */
         @media (max-width: 768px) {
-            .navbar a { margin-right: 10px; font-size: 14px; }
+            .navbar { flex-direction: column; gap: 10px; }
+            .nav-left a { margin-right: 10px; font-size: 14px; }
             .container { padding: 10px; }
         }
     </style>
@@ -76,23 +100,31 @@
 </head>
 <body>
     <div class="navbar">
-        <a href="/" {% if request.endpoint == 'cloud.index' %}class="active"{% endif %}>☁️ Облако</a>
-        <a href="/monitor" {% if request.endpoint == 'monitor.index' %}class="active"{% endif %}>📊 Мониторинг</a>
-        <a href="/diagnose" {% if request.endpoint == 'diagnose.index' %}class="active"{% endif %}>🔍 Диагностика</a>
+        <div class="nav-left">
+            <a href="/" {% if request.endpoint == 'cloud.index' %}class="active"{% endif %}>☁️ Облако</a>
+            <a href="/monitor" {% if request.endpoint == 'monitor.index' %}class="active"{% endif %}>📊 Мониторинг</a>
+            <a href="/diagnose" {% if request.endpoint == 'diagnose.index' %}class="active"{% endif %}>🔍 Диагностика</a>
+        </div>
+        {% if current_user.is_authenticated %}
+        <div class="nav-right">
+            <span class="user-info">👤 {{ current_user.username }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="logout-btn">🚪 Выход</a>
+        </div>
+        {% endif %}
     </div>
-    
+
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% for category, message in messages %}
                 <div class="flash {{ category }}">{{ message | safe }}</div>
             {% endfor %}
         {% endwith %}
-        
+
         <h1>{% block page_title %}Cloud Lab{% endblock %}</h1>
-        
+
         {% block content %}{% endblock %}
     </div>
-    
+
     <script>
         // Общие скрипты
         {% block extra_js %}{% endblock %}
