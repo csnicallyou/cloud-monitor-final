@@ -1,22 +1,23 @@
 ================================================================================
-ПРОМПТ ДЛЯ НОВОГО ЧАТА - Cloud Lab Project (Версия с Tailscale и полной авторизацией)
+ПРОМПТ ДЛЯ НОВОГО ЧАТА - Cloud Lab Project (Финальная стабильная версия)
 ================================================================================
 
 Ты - ИИ-ассистент, помогающий с проектом "Облако + мониторинг" на Arch Linux.
 
-## АРХИТЕКТУРА ПРОЕКТА (РАБОТАЕТ СТАБИЛЬНО)
+## АРХИТЕКТУРА ПРОЕКТА
 
-Сервер: Arch Linux, IP 192.168.1.102
+Сервер: Arch Linux
+Локальный IP: 192.168.1.102
+Tailscale IP: 100.99.188.89
 Пользователь: csn (пароль: lab123)
 Пароль postgres: postgres
 
 ### УСТАНОВЛЕННЫЕ СЕРВИСЫ
-- PostgreSQL 17 (порт 5432)
-- nginx (порты 80/443) - ОСТАНОВЛЕН, НЕ ИСПОЛЬЗУЕТСЯ
+- PostgreSQL 17 (порт 5432) - локально
+- nginx (порт 80) - reverse proxy на Flask (работает)
 - Prometheus (9090) + node_exporter (9100)
-- Python 3.14 + venv /home/csn/cloud_lab_env
 - Flask + psycopg2 + flask-login
-- Tailscale (VPN, IP сервера: 100.99.188.89)
+- Tailscale (VPN)
 
 ### БАЗА ДАННЫХ
 БД: cloud_lab
@@ -26,131 +27,130 @@
 ### ПРИЛОЖЕНИЕ FLASK
 Путь: /home/csn/cloud_app/
 Порт: 8080
-Доступ: http://100.99.188.89:8080 (через Tailscale)
+Сайт: http://100.99.188.89
 
-Структура:
+### СТРУКТУРА ПРОЕКТА
 /home/csn/cloud_app/
-├── app.py
-├── config.py
-├── models.py             # Модель User (Flask-Login)
-├── routes/
-│   ├── __init__.py
-│   ├── auth.py           # Логин, регистрация, выход
-│   ├── cloud.py          # Облако (drag-and-drop, иконки)
-│   ├── monitor.py        # Мониторинг (таблица метрик)
-│   └── diagnose.py       # Диагностика (краткая + полная)
-├── utils/
-│   ├── db.py
-│   └── helpers.py        # human_readable_size, get_file_icon
-└── templates/
-    ├── base.html         # Базовый шаблон (единый дизайн)
-    ├── login.html        # Страница входа
-    ├── register.html     # Страница регистрации
-    ├── cloud.html        # Drag-and-drop, иконки
-    ├── monitor.html      # Таблица мониторинга
-    ├── diagnose.html     # Карточки диагностики
-    └── diagnose_full.html # Полная диагностика
+- app.py
+- config.py
+- models.py
+- requirements.txt
+- routes/
+  - auth.py
+  - cloud.py
+  - monitor.py
+  - diagnose.py
+- utils/
+  - db.py
+  - helpers.py
+- static/uploads/
+- templates/
+  - base.html
+  - login.html
+  - register.html
+  - cloud.html
+  - monitor.html
+  - diagnose.html
+  - diagnose_full.html
 
-systemd сервис: flask-cloud.service (активен, автозапуск)
+### SYSTEMD
+Сервис: flask-cloud.service (активен, автозапуск)
 
-## ЧТО УЖЕ РАБОТАЕТ (ПРОВЕРЕНО)
+## ЧТО РАБОТАЕТ
 
-### АВТОРИЗАЦИЯ (/auth)
-- ✅ Регистрация новых пользователей
-- ✅ Вход по логину/паролю (admin / admin123)
-- ✅ Выход из аккаунта
-- ✅ Хэширование паролей (werkzeug.security)
-- ✅ Личные папки для каждого пользователя
-- ✅ Изоляция файлов (user_id в БД)
+### АВТОРИЗАЦИЯ
+- Регистрация, вход, выход
+- Тестовый пользователь: admin / admin123
+- Личные папки, изоляция файлов
 
-### ОБЛАКО (/)
-- ✅ Доступ только после авторизации
-- ✅ Личные файлы каждого пользователя
-- ✅ Множественная загрузка файлов
-- ✅ Drag-and-drop загрузка
-- ✅ Чекбоксы для выбора файлов
-- ✅ Кнопки: "Выделить всё", "Снять выделение", "Удалить выбранные", "Скачать выбранные (ZIP)"
-- ✅ Сортировка по имени, дате, размеру
-- ✅ Пагинация (5 файлов на страницу)
-- ✅ Иконки типов файлов
-- ✅ Поиск по имени файла
+### ОБЛАКО
+- Drag-and-drop загрузка
+- Множественная загрузка
+- Чекбоксы, выделение всего
+- Удаление и скачивание ZIP
+- Сортировка, пагинация, иконки, поиск
 
-### МОНИТОРИНГ (/monitor)
-- ✅ Таблица метрик из БД
-- ✅ Пагинация (10 строк)
+### МОНИТОРИНГ
+- Таблица метрик из БД
+- Пагинация
 
-### ДИАГНОСТИКА (/diagnose)
-- ✅ Карточки с краткой информацией (CPU, RAM, DISK, NGINX, PostgreSQL)
-- ✅ /diagnose/full/cpu, /diagnose/full/ram, /diagnose/full/disk, /diagnose/full/nginx, /diagnose/full/postgres
+### ДИАГНОСТИКА
+- Карточки (CPU, RAM, DISK, NGINX, PostgreSQL)
+- Полная диагностика каждого компонента
 
-### УДАЛЁННЫЙ ДОСТУП (Tailscale)
-- ✅ VPN настроен
-- ✅ Доступ с телефона (iOS) и других ПК
-- ✅ IP сервера в Tailscale: 100.99.188.89
-- ✅ Подключение: ssh csn@100.99.188.89 (пароль: lab123)
+### NGINX
+- Reverse proxy с порта 80 на 8080
+- Отдача статики
+
+### TAILSCALE
+- VPN для удалённого доступа
+- IP: 100.99.188.89
+- SSH: ssh csn@100.99.188.89 (пароль: lab123)
 
 ### ИНФРАСТРУКТУРА
-- ✅ systemd сервис: flask-cloud (активен)
-- ✅ CI/CD: GitHub Actions runner настроен
-- ✅ Репозиторий: github.com/csnicallyou/cloud-monitor-final
-- ✅ Скрипт мониторинга: /home/csn/monitor.sh (cron каждую минуту)
+- GitHub Actions runner
+- Репозиторий: github.com/csnicallyou/cloud-monitor-final
+- Скрипт monitor.sh (cron каждую минуту)
 
-## ЧТО СДЕЛАНО ЗА ПОСЛЕДНИЙ СЕАНС (19.04.2026)
-- ✅ Починен cloud.html (Drag-and-drop заработал снова)
-- ✅ Настроен Tailscale для удалённого доступа
-- ✅ Проверена загрузка файлов через веб-интерфейс
+## ВЫПОЛНЕННЫЕ ЗАДАЧИ
+- ✅ Базовая структура Flask
+- ✅ Облако (drag-and-drop, иконки, пагинация, сортировка)
+- ✅ Мониторинг
+- ✅ Диагностика
+- ✅ Единый дизайн
+- ✅ Авторизация (Flask-Login)
+- ✅ Tailscale VPN
+- ✅ nginx reverse proxy
+- ✅ Документация (README, CHEATSHEET, INTERVIEW, PROMPT)
+- ✅ Заливка на GitHub
 
-## ПЛАНЫ (ЧТО ДОБАВИТЬ) - ПО ПОРЯДКУ
-
-### ОЧЕРЕДЬ ЗАДАЧ
-1. ✅ **Авторизация** - ВЫПОЛНЕНО
-2. ✅ **Tailscale VPN** - ВЫПОЛНЕНО
-3. 🎯 **nginx + HTTPS (Let's Encrypt)** - СЛЕДУЮЩАЯ ЗАДАЧА
-   - Настроить nginx как reverse proxy на Flask (порт 8080)
-   - Получить бесплатный SSL-сертификат
-   - Настроить автопродление сертификата
-4. 🎯 **Docker + Docker Compose**
-   - Контейнеризация Flask + PostgreSQL + Prometheus
-5. 🎯 **Grafana дашборды**
-   - Визуализация метрик из Prometheus
-6. 🎯 **Ansible плейбуки**
-   - Автоматизация развертывания проекта
+## ОТЛОЖЕННЫЕ ЗАДАЧИ
+- ⏸️ nginx + HTTPS (нужен домен)
+- ⏸️ Docker + Docker Compose (пробовали, откатились)
+- ❌ Grafana (отказались)
+- ⏸️ Ansible (написали плейбук, но не внедрили)
 
 ## КЛЮЧЕВЫЕ КОМАНДЫ
 
-# Проверить статус Flask
+# Статус Flask
 sudo systemctl status flask-cloud
 
-# Посмотреть логи
-sudo journalctl -u flask-cloud -n 30 --no-pager
-
-# Перезапустить сервис
+# Перезапустить Flask
 sudo systemctl restart flask-cloud
 
-# Tailscale: посмотреть IP и устройства
-tailscale ip
-tailscale status
+# Логи Flask
+sudo journalctl -u flask-cloud -n 30 --no-pager
 
 # Обновить код из репозитория
 cd /home/csn/cloud-monitor-final && git pull && cp -r cloud_app/* /home/csn/cloud_app/ && sudo systemctl restart flask-cloud
 
-## ТЕКУЩАЯ ЗАДАЧА (МЕСТО ОСТАНОВКИ)
-Настроить nginx + HTTPS (Let's Encrypt). nginx установлен но остановлен, нужно:
-1. Настроить reverse proxy на Flask (127.0.0.1:8080)
-2. Получить SSL сертификат
-3. Настроить автопродление
+# Tailscale
+tailscale ip
+tailscale status
 
-## ПОЖЕЛАНИЯ ПО СТИЛЮ ОТВЕТОВ
-- Давай готовые команды для копирования
-- Не усложняй, если можно просто
-- Меняем только файлы в cloud_app/ и nginx, не трогаем systemd сервис Flask (он нужен пока)
-- Код давай сразу рабочий, без обрывов
+# PostgreSQL
+sudo -u postgres psql -d cloud_lab
+
+# Проверка nginx
+sudo nginx -t
+sudo systemctl restart nginx
 
 ## ТЕСТОВЫЕ ДАННЫЕ
 - Логин: admin
 - Пароль: admin123
-- Tailscale IP сервера: 100.99.188.89
-- Сайт: http://100.99.188.89:8080
+- Сайт: http://100.99.188.89
+- SSH: ssh csn@100.99.188.89 (пароль: lab123)
+
+## ПРОБЛЕМЫ И РЕШЕНИЯ
+
+| Проблема | Решение |
+|----------|---------|
+| Drag-and-drop сломался | Восстановил cloud.html с полным JS |
+| nginx отдавал дефолтную страницу | Переписал конфиг, убрал экранирование |
+| Flask не слушал внешние запросы | Поменял host='0.0.0.0' |
+| Таблицы БД не создавались | Написал SQL-скрипт |
+| 502 Bad Gateway | Создал venv и установил зависимости |
+| Конфликт порта 5432 с Docker | Остановил локальный PostgreSQL |
 
 ================================================================================
 КОНЕЦ ПРОМПТА
